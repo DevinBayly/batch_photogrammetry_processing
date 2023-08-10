@@ -1,59 +1,26 @@
+#!/usr/bin/python3
 from pathlib import Path
+import json
 import subprocess as sp
 import uuid
 
-# first convert these all to be named images instead
-imagefolders = sorted(Path("../").glob("*/images"))+sorted(Path("../").glob("*/*/images"))+sorted(Path("../").glob("*/*/*/images"))
-#for fldr in outputfolders:
-#  if "odm" in fldr.name:
-#    continue
-#  new_name = Path(f"{fldr.parent}/images")
-#  fldr.rename(new_name)
-#  imagefolders.append(new_name)
-#
-#print(imagefolders)
+flights = [Path(flight) for flight in open("staged_flights.txt").read().split("\n")]
+pairings = {str(uuid.uuid4()):str(flight) for flight in flights}
+print(pairings)
+pairings_path = f"pairings_{uuid.uuid4()}.json"
+open(pairings_path,"w").write(json.dumps(pairings))
+running_tasks = []
+for uid_key in pairings:
+    cmd = f'sbatch -A cdh -p standard -t 24:00:00 -N 1 -n 16 odm_submit.sh {uid_key} {pairings_path}'
+    print(cmd)
+    # we must capture the output in order to connect up which sbatch job ids are associated with which uids in the tmp folder
+    p = sp.run(cmd,shell=True,capture_output=True)
+    jid = p.stdout.decode("utf-8").split(" ")[-1]
+    running_tasks.append([jid,uid_key])
+    
 
+# at this point pause for a moment and then export a collection of the pids associated with this job
+running_path = f"running_jobs_{uuid.uuid4()}.json"
+open(running_path,"w").write(json.dumps(running_tasks))
 
-## here we fix the fact that there might be spaces in the names of the files
-def remove_spaces_within_parents(pth):
-  # split on the / and start with the first one and then gradually update the path so that we have the option to rename later parts
-  parts = str(pth).split("/")
-  new_pth= Path(parts[0])
-  print("full path is",pth)
-  for p in parts[1:]:
-    print(new_pth,"starting out",p)
-    if " " in p:
-      new_name = p.replace(" ","_")
-      og_pth= Path(f"{new_pth}/{p}")
-      print("path that probably contains spce",og_pth)
-      if og_pth.exists():
-        og_pth.rename(f"{new_pth}/{new_name}")
-        new_pth = Path(f"{new_pth}/{new_name}")
-        print("new path after renaming",new_pth)
-      else:
-        break
-    else:
-      new_pth=Path(f"{new_pth}/{p}")
-  
-
-# check for spaces
-for imfolder in imagefolders:
-  if " " in str(imfolder):
-    remove_spaces_within_parents(imfolder)
-
-
-imagefolders = sorted(Path("../tmp").glob("*/images"))+sorted(Path("../tmp").glob("*/*/images"))+sorted(Path("../tmp").glob("*/*/*/images"))
-print("fixed spaces",imagefolders)
-
-
-for imagefldr in imagefolders[5:]:
-  try:
-    if "odm" in str(imagefldr.parent):
-      continue
-    if len(sorted(imagefldr.iterdir())) >10:
-#      Path(f"{imagefldr.parent}/results").mkdir(exist_ok=True)
-      cmd = f'sbatch -A cdh -p standard -t 24:00:00 -N 1 -n 16  odm_submit.sh "{imagefldr}" {imagefldr.parent.stem} "{imagefldr.absolute()}"'
-      print(cmd)
-      sp.run(cmd,shell=True)
-  except:
-    print("didn't start",imagefldr)
+open("staged_flights.txt","w").write("")

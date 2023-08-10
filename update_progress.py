@@ -10,8 +10,10 @@ high_level_status ={}
 
 ## first get all the outputs
 all_gps_tagged_uploads = []
-for pattern_mult in range(0,4):
-   all_gps_tagged_uploads+=[str(f.parent) for f in Path("/xdisk/bryancarter/elliottc1").glob("*/"*pattern_mult +"OUTPUT")]
+for pattern_mult in range(0,5):
+    all_gps_tagged_uploads+=[str(f.parent) for f in Path("/xdisk/bryancarter/elliottc1").glob("*/"*pattern_mult +"OUTPUT")]
+
+
 
 high_level_status["uploaded_gps_folders"]=all_gps_tagged_uploads.copy()
 totals={}
@@ -36,13 +38,11 @@ for pairing_file in pairings_files:
     print(key)
     try:
       ind = tmp_folders.index(key)
-      uploaded_folder_ind = all_gps_tagged_uploads.index(pairings[key])
-      uploaded_folder_name = all_gps_tagged_uploads.pop(uploaded_folder_ind)
 
       images = sorted(Path(f"../tmp/{key}/images").glob("*JPG"))
       flight_level_status[tmp_folders.pop(ind)] ={
         "copied":"complete",
-        "original_folder":uploaded_folder_name,
+        "original_folder":pairings[key],
         "number_images":len(images)
     }
       
@@ -54,39 +54,45 @@ for pairing_file in pairings_files:
 
 
 print(len(tmp_folders),"after removing pairings that have already been established")
+print("remaining folders are",tmp_folders)
 print(flight_level_status)
 ## then for each of the remaining folders in tmp
 ## go through the first image in each and compare to the first image in the remaining folders from the outputs
+
+
+# a map that helps us match an image name to the upload folder it belongs to
+image_to_upload_map = {}
 new_pairings ={}
+for upload in all_gps_tagged_uploads:
+    images = sorted(Path(f"{upload}/OUTPUT").glob("*JPG"))
+    if len(images) == 0:
+        print("upload has no images",upload)
+    else:
+        for im in images:
+            image_to_upload_map[im.stem] = upload
+    
 added_some = False
-for tmp_folder in tmp_folders:
-  print(tmp_folder)
-  images = sorted(Path(f"../tmp/{tmp_folder}/images").glob("*JPG"))
-  if len(images)==0:
-    flight_level_status[tmp_folder]= {
-    "error":"empty images folder"
-    }
-    continue
-  first_tmp = images[0]
-  for uploaded_folder_name in all_gps_tagged_uploads:
-    first_images = sorted(Path(f"{uploaded_folder_name}/OUTPUT").glob("*JPG"))
-    if len(first_images)==0:
-      flight_level_status[uploaded_folder_name] ={"error":"one of cat's uploaded folders doesn't have output images"}
-      continue
-    first_uploaded = first_images[0]
-    if first_tmp.stem == first_uploaded.stem:
-      exists = new_pairings.get(tmp_folder,-1)
-      if exists != -1:
-        print("seems like there's multiple uploaded_folder_names for this image",tmp_folder,uploaded_folder_name,exists)
-      new_pairings[tmp_folder] = uploaded_folder_name
-      all_gps_tagged_uploads.remove(uploaded_folder_name)
-      flight_level_status[tmp_folder] ={
-        "copied":"complete",
-        "original_folder":uploaded_folder_name
-      }
-      flight_level_status[tmp_folder]["number_images"]= len(images)
-      added_some = True
-      break
+for tmp in tmp_folders:
+    images = sorted(Path(f"{tmp}/images").glob("*JPG"))
+    image_count = len(images)
+    if len(images) >0:
+        first = images[0]
+        found = image_to_upload_map.get(first.stem,-1)
+        if found !=-1:
+            flight_level_status[tmp] ={
+            "copied":"incomplete",
+            "error":"no images found for folder",
+            }
+        else:
+            print("matched ",tmp,found)
+            flight_level_status[tmp] ={
+            "copied":"complete",
+            "number_images":image_count,
+            "original_folder":found,
+            "error":""
+            }
+            added_some=True
+
 
 print("new pairings look like ",new_pairings)
 if added_some:
@@ -99,7 +105,6 @@ RECOMMEND RE_REUNNING THIS SCRIPT
 """)
 
 
-print("the remaining tmp_folders that aren't paired are",tmp_folders)
 
 
 
@@ -123,19 +128,8 @@ def status_updater_helper(parent_folder,fldr_name,file_name,dct,workflow_stage):
   return 0
 
 
-## just double checking that we have all the folders represented here
-missing=False
-orthos = sorted(Path("../tmp").glob("*/odm_orthophoto/odm_orthophoto.tif"))
-for o in orthos:
-  uid_folder_ortho_key = o.parent.parent.stem
-  found_in_status_report = flight_level_status.get(uid_folder_ortho_key,-1)
-  if found_in_status_report == -1:
-    print("something happened and we don't have this folder in our status",uid_folder_ortho_key)
-    missing  = True
+      
 
-if missing:
-  print("stopping now")
-  sys.exit()
   
   
 
